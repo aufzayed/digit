@@ -2,34 +2,58 @@
 import re
 import os
 import sys
+import argparse
 from shutil import rmtree
 from git import Repo
+from colorama import Fore, init
 
-BLUE = '\033[94m'
-GREEN = '\033[92m'
+
 work_dir = '/tmp/digit_dir/'
-
+init()
 
 def banner():
-    print(GREEN + '''
+    print(f'''{Fore.GREEN}
 ________    .___    ________  .______________
 \______ \   |   |  /  _____/  |   \__    ___/
  |    |  \  |   | /   \  ___  |   | |    |   
  |    `   \ |   | \    \_\  \ |   | |    |   
 /_______  / |___|  \______  / |___| |____|   
         \/                \/                 
-    Made with ♥ by Abdelrhman(@aufzayed)
+    {Fore.BLUE}Made with {Fore.RED}♥ {Fore.BLUE}by Abdelrhman(@aufzayed){Fore.RESET}
 ''')
+banner()
+
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument('--repo-list', metavar='', help='a file containing a list of repos to extract data from them')
+arg_parser.add_argument('--output', metavar='', help='output directory')
+args = arg_parser.parse_args()
 
 
+if args.repo_list is not None:
+    repo_list_abs_path = os.path.abspath(args.repo_list)
+    with open(repo_list_abs_path) as repo_list:
+        urls_list = [url.split('\n')[0] for url in repo_list.readlines()]
+elif args.repo_list is None:
+    urls_list = [url.split('\n')[0] for url in sys.stdin]
+else:
+    sys.exit()
+
+if args.output is not None:
+    output_path = os.path.abspath(args.output)
+else:
+    output_path = os.path.abspath('.')
 
 def digit(name, url, output):
     endpoints = set()
-    out = os.path.abspath(output)
-    print(f'{BLUE}[+] {GREEN}Cloning {url}')
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}Cloning {url}')
     # clone the repo into temp dir
-    Repo.clone_from(url, f'{work_dir}{name}')
-    print(f'{BLUE}[+] {GREEN}repo Clonned')
+    try:
+        Repo.clone_from(url, f'{work_dir}{name}')
+    except Exception as e:
+        print(f'{Fore.RED}[!] Error occurred while cloning {url}')
+        print(e)
+        pass
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}repo Cloned')
     # regex by LinkFinder team https://github.com/GerbenJavado/LinkFinder
     endpoints_regex = r"""
     (?:"|')                               # Start newline delimiter
@@ -64,7 +88,7 @@ def digit(name, url, output):
         for file_name in files_names:
             files_list.append(os.path.join(dirs_paths, file_name))
 
-    print(f'{BLUE}[+] {GREEN}Extract Endpoints')
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}Extract Endpoints')
     for file in files_list:
         with open(file, 'r') as f:
             try:
@@ -83,26 +107,22 @@ def digit(name, url, output):
                 pass
 
     for end in sorted(endpoints):
-        with open(out, 'a') as file:
+        with open(f'{output}/{repo_name}_endpoints.txt', 'a') as file:
             file.write(f'{end}\n')
-    print(f'{BLUE}[+] {GREEN}saving results')
-    print(f'{BLUE}[+] {GREEN}deleting temp files')
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}saving results')
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}{len(endpoints)} Endpoints Found!')
+
+
+if __name__ == '__main__':
+    for url in urls_list:
+        repo_name = url.split('/')[-1]
+        repo_url = url
+        output_file = output_path
+        try:
+            os.mkdir(work_dir)
+        except FileExistsError:
+            pass
+        digit(repo_name, repo_url, output_file)
+
+    print(f'{Fore.BLUE}[+] {Fore.GREEN}deleting temp files')
     rmtree(work_dir)
-    print(f'{BLUE}[+] {GREEN}{len(endpoints)} Endpoints Found!')
-
-
-if len(sys.argv) != 3:
-    banner()
-    print(BLUE + 'Usage: python3 digit <repo url> <output file>')
-    print(BLUE + 'Example: python3 digit.py https://github.com/test/testrepo output.txt')
-    sys.exit()
-else:
-    banner()
-    repo_name = sys.argv[1].split('/')[-1]
-    repo_url = sys.argv[1]
-    output_file = sys.argv[2]
-    try:
-        os.mkdir(work_dir)
-    except FileExistsError:
-        pass
-    digit(repo_name, repo_url, output_file)
