@@ -3,9 +3,11 @@ import re
 import os
 import sys
 import argparse
+from urllib import parse
 from shutil import rmtree
 from git import Repo
 from colorama import Fore, init
+import time
 
 
 work_dir = '/tmp/digit_dir/'
@@ -45,84 +47,88 @@ else:
 
 def digit(name, url, output):
     endpoints = set()
-    print(f'{Fore.BLUE}[+] {Fore.GREEN}Cloning {url}')
-    # clone the repo into temp dir
     try:
+        print(f'{Fore.BLUE}[+] {Fore.GREEN}Cloning {Fore.BLUE}{url}')
         Repo.clone_from(url, f'{work_dir}{name}')
+
+        print(f'{Fore.BLUE}[+] {Fore.GREEN}repo Cloned')
+        # regex by LinkFinder team https://github.com/GerbenJavado/LinkFinder
+        endpoints_regex = r"""
+        (?:"|')                               # Start newline delimiter
+        (
+            ((?:[a-zA-Z]{1,10}://|//)           # Match a scheme [a-Z]*1-10 or //
+            [^"'/]{1,}\.                        # Match a domain name (any character + dot)
+            [a-zA-Z]{2,}[^"']{0,})              # The domain extension and/or path
+            |
+            ((?:/|\.\./|\./)                    # Start with /,../,./
+            [^"'><,;| *()(%%$^/\\\[\]]          # Next character can't be...
+            [^"'><,;|()]{1,})                   # Rest of the characters can't be
+            |
+            ([a-zA-Z0-9_\-/]{1,}/               # Relative endpoint with /
+            [a-zA-Z0-9_\-/]{1,}                 # Resource name
+            \.(?:[a-zA-Z]{1,4}|action)          # Rest + extension (length 1-4 or action)
+            (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
+            |
+            ([a-zA-Z0-9_\-/]{1,}/               # REST API (no extension) with /
+            [a-zA-Z0-9_\-/]{3,}                 # Proper REST endpoints usually have 3+ chars
+            (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
+            |
+            ([a-zA-Z0-9_\-]{1,}                 # filename
+            \.(?:php|asp|aspx|jsp|json|
+                action|html|js|txt|xml)        # . + extension
+            (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
+        )
+        (?:"|')                               # End newline delimiter
+        """
+
+        files_list = []
+        for dirs_paths, dirs_list, files_names in os.walk(f'{work_dir}{name}'):
+            for file_name in files_names:
+                files_list.append(os.path.join(dirs_paths, file_name))
+
+        print(f'{Fore.BLUE}[+] {Fore.GREEN}Extract Endpoints')
+        for file in files_list:
+            with open(file, 'r') as f:
+                try:
+                    lines = f.readlines()
+                    for line in lines:
+                        regex = re.compile(endpoints_regex, re.VERBOSE)
+                        f_endpoints = regex.findall(line)
+                        for e in f_endpoints:
+                            for i in e:
+                                if i != '':
+                                    if not i[0:7] == 'http://' and not i[0:8] == 'https://':
+                                        endpoints.add(i)
+                                    elif i[0:7] == 'http://' or i[0:8] == 'https://':
+                                        endpoints.add(parse.urlparse(i).path)
+                                    else:
+                                        pass
+                except UnicodeDecodeError:
+                    pass
+
+        if len(endpoints) != 0:
+            print(f'{Fore.BLUE}[+] {Fore.GREEN}saving results')
+            print(f'{Fore.BLUE}[+] {Fore.GREEN}{len(endpoints)} Endpoints Found!')
+            with open(f'{output}/{repo_name}_endpoints.txt', 'a') as file:
+                for end in sorted(endpoints):
+                    file.write(f'{end}\n')
+        else:
+            print(f'{Fore.RED}[!] No Endpoints Found.{Fore.RESET}')
+
     except Exception as e:
         print(f'{Fore.RED}[!] Error occurred while cloning {url}')
         print(e)
         pass
-    print(f'{Fore.BLUE}[+] {Fore.GREEN}repo Cloned')
-    # regex by LinkFinder team https://github.com/GerbenJavado/LinkFinder
-    endpoints_regex = r"""
-    (?:"|')                               # Start newline delimiter
-    (
-        ((?:[a-zA-Z]{1,10}://|//)           # Match a scheme [a-Z]*1-10 or //
-        [^"'/]{1,}\.                        # Match a domain name (any character + dot)
-        [a-zA-Z]{2,}[^"']{0,})              # The domain extension and/or path
-        |
-        ((?:/|\.\./|\./)                    # Start with /,../,./
-        [^"'><,;| *()(%%$^/\\\[\]]          # Next character can't be...
-        [^"'><,;|()]{1,})                   # Rest of the characters can't be
-        |
-        ([a-zA-Z0-9_\-/]{1,}/               # Relative endpoint with /
-        [a-zA-Z0-9_\-/]{1,}                 # Resource name
-        \.(?:[a-zA-Z]{1,4}|action)          # Rest + extension (length 1-4 or action)
-        (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
-        |
-        ([a-zA-Z0-9_\-/]{1,}/               # REST API (no extension) with /
-        [a-zA-Z0-9_\-/]{3,}                 # Proper REST endpoints usually have 3+ chars
-        (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
-        |
-        ([a-zA-Z0-9_\-]{1,}                 # filename
-        \.(?:php|asp|aspx|jsp|json|
-             action|html|js|txt|xml)        # . + extension
-        (?:[\?|#][^"|']{0,}|))              # ? or # mark with parameters
-    )
-    (?:"|')                               # End newline delimiter
-    """
-
-    files_list = []
-    for dirs_paths, dirs_list, files_names in os.walk(work_dir):
-        for file_name in files_names:
-            files_list.append(os.path.join(dirs_paths, file_name))
-
-    print(f'{Fore.BLUE}[+] {Fore.GREEN}Extract Endpoints')
-    for file in files_list:
-        with open(file, 'r') as f:
-            try:
-                lines = f.readlines()
-                for line in lines:
-                    regex = re.compile(endpoints_regex, re.VERBOSE)
-                    f_endpoints = regex.findall(line)
-                    for e in f_endpoints:
-                        for i in e:
-                            if i != '':
-                                if not i[0:7] == 'http://' and not i[0:8] == 'https://':
-                                    endpoints.add(i)
-                                else:
-                                    pass
-            except UnicodeDecodeError:
-                pass
-
-    for end in sorted(endpoints):
-        with open(f'{output}/{repo_name}_endpoints.txt', 'a') as file:
-            file.write(f'{end}\n')
-    print(f'{Fore.BLUE}[+] {Fore.GREEN}saving results')
-    print(f'{Fore.BLUE}[+] {Fore.GREEN}{len(endpoints)} Endpoints Found!')
-
 
 if __name__ == '__main__':
     for url in urls_list:
         repo_name = url.split('/')[-1]
         repo_url = url
-        output_file = output_path
         try:
             os.mkdir(work_dir)
         except FileExistsError:
             pass
-        digit(repo_name, repo_url, output_file)
+        digit(repo_name, repo_url, output_path)
 
     print(f'{Fore.BLUE}[+] {Fore.GREEN}deleting temp files')
     rmtree(work_dir)
