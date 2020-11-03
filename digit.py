@@ -7,7 +7,6 @@ from urllib import parse
 from shutil import rmtree
 from git import Repo
 from colorama import Fore, init
-import time
 
 
 work_dir = '/tmp/digit_dir/'
@@ -92,17 +91,20 @@ def digit(name, url, output):
                 try:
                     lines = f.readlines()
                     for line in lines:
-                        regex = re.compile(endpoints_regex, re.VERBOSE)
-                        f_endpoints = regex.findall(line)
-                        for e in f_endpoints:
-                            for i in e:
-                                if i != '':
-                                    if not i[0:7] == 'http://' and not i[0:8] == 'https://':
-                                        endpoints.add(i)
-                                    elif i[0:7] == 'http://' or i[0:8] == 'https://':
-                                        endpoints.add(parse.urlparse(i).path)
-                                    else:
+                        regex_patterns = re.compile(endpoints_regex, re.VERBOSE)
+                        regex_matches = regex_patterns.findall(line)
+                        for match in regex_matches:
+                            for endpoint in match:
+                                if endpoint != '':
+                                    endpoint = parse.urlparse(endpoint).path
+                                    try:
+                                        if endpoint[0] == '/':
+                                            endpoints.add(endpoint[1:])
+                                        else:
+                                            endpoints.add(endpoint)
+                                    except IndexError:
                                         pass
+
                 except UnicodeDecodeError:
                     pass
 
